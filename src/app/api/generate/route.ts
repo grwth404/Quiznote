@@ -6,47 +6,53 @@ import {
 import { StreamingTextResponse } from "ai";
 import { NextResponse } from "next/server";
 
-const credentials = JSON.parse(
-  Buffer.from(process.env.GOOGLE_SERVICE_KEY || "", "base64").toString()
-);
-
-// // Initialize Vertex with your Cloud project and location
-const vertex_ai = new VertexAI({
-  project: "teak-flash-361520",
-  location: "europe-west3",
-  googleAuthOptions: {
-    credentials,
-  },
-});
 const model = "gemini-1.5-pro-preview-0409";
 
-// Instantiate the models
-const generativeModel = vertex_ai.preview.getGenerativeModel({
-  model: model,
-  generationConfig: {
-    maxOutputTokens: 8192,
-    temperature: 1,
-    topP: 0.95,
-  },
-  safetySettings: [
-    {
-      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+function getGenerativeModel() {
+  const encodedKey = process.env.GOOGLE_SERVICE_KEY;
+  if (!encodedKey) {
+    throw new Error("GOOGLE_SERVICE_KEY is not set");
+  }
+
+  const credentials = JSON.parse(
+    Buffer.from(encodedKey, "base64").toString()
+  );
+
+  const vertex_ai = new VertexAI({
+    project: "teak-flash-361520",
+    location: "europe-west3",
+    googleAuthOptions: {
+      credentials,
     },
-    {
-      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+  });
+
+  return vertex_ai.preview.getGenerativeModel({
+    model: model,
+    generationConfig: {
+      maxOutputTokens: 8192,
+      temperature: 1,
+      topP: 0.95,
     },
-    {
-      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-    },
-  ],
-});
+    safetySettings: [
+      {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+    ],
+  });
+}
 
 function iteratorToStream(iterator: any) {
   return new ReadableStream({
@@ -124,6 +130,17 @@ export async function POST(req: Request) {
   const body = {
     contents: [{ role: "user", parts: [text1, ...data, text2] }],
   };
+
+  let generativeModel;
+  try {
+    generativeModel = getGenerativeModel();
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to initialize quiz generation";
+    return new NextResponse(message, { status: 500 });
+  }
 
   const resp = await generativeModel.generateContentStream(body);
 
